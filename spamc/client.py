@@ -59,6 +59,7 @@ def get_response(cmd, conn):
         basescore=0.0,
         report=[],
         symbols=[],
+        raw_symbols=[],
         headers={},
     )
 
@@ -85,8 +86,10 @@ def get_response(cmd, conn):
                 resp_dict['score'] = float(tmp['score'])
                 resp_dict['basescore'] = float(tmp['basescore'])
                 resp_dict['isspam'] = tmp['isspam'] in ['True', 'Yes']
-            if not match:
+            else:
                 if cmd == 'SYMBOLS':
+                    if not line.lower().startswith('content-length:'):
+                        resp_dict['raw_symbols'].append(line)
                     match = PART_RE.findall(line)
                     for part in match:
                         resp_dict['symbols'].append(part)
