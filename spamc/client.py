@@ -48,8 +48,14 @@ def _check_action(action):
 
 
 # pylint: disable=R0912,R0915
-def get_response(cmd, conn):
-    """Return a response"""
+def get_response(cmd, conn, raw_symbols=False):
+    """
+    Return a response.
+
+    The optional argument raw_symbols requests for the SYMBOLS command
+    to abstain from any parsing, and instead return the raw result in
+    the 'symbols' member of the response.
+    """
     resp = conn.socket().makefile('rb', -1)
     resp_dict = dict(
         code=0,
@@ -59,9 +65,9 @@ def get_response(cmd, conn):
         basescore=0.0,
         report=[],
         symbols=[],
-        raw_symbols=[],
         headers={},
     )
+    raw_symbols_list = []
 
     if cmd == 'TELL':
         resp_dict['didset'] = False
@@ -89,10 +95,10 @@ def get_response(cmd, conn):
             else:
                 if cmd == 'SYMBOLS':
                     if not line.lower().startswith('content-length:'):
-                        resp_dict['raw_symbols'].append(line)
+                        raw_symbols_list.append(line)
                     match = PART_RE.findall(line)
                     for part in match:
-                        resp_dict['symbols'].append(part)
+                            resp_dict['symbols'].append(part)
             if not match and cmd != 'PROCESS':
                 match = RULE_RE.findall(line)
                 if match:
@@ -108,6 +114,8 @@ def get_response(cmd, conn):
                 resp_dict['didset'] = True
             if line.startswith('DidRemove:'):
                 resp_dict['didremove'] = True
+    if cmd == 'SYMBOLS' and raw_symbols:
+        resp_dict['symbols'] = ['\n'.join(raw_symbols_list)]
     if cmd == 'PROCESS':
         resp_dict['message'] = ''.join(lines[4:]) + '\r\n'
     if cmd == 'HEADERS':
@@ -187,7 +195,7 @@ class SpamC(object):
         return '\r\n'.join(headers)
 
     # pylint: disable=E1103
-    def perform(self, cmd, msg='', extra_headers=None):
+    def perform(self, cmd, msg='', extra_headers=None, raw_symbols=False):
         """Perform the call"""
         tries = 0
         while 1:
@@ -229,7 +237,7 @@ class SpamC(object):
                     conn.socket().shutdown(socket.SHUT_WR)
                 except socket.error:
                     pass
-                return get_response(cmd, conn)
+                return get_response(cmd, conn, raw_symbols)
             except socket.gaierror, err:
                 if conn is not None:
                     conn.release()
@@ -260,6 +268,13 @@ class SpamC(object):
         """Check if message is spam or not, and return score plus list
         of symbols hit"""
         return self.perform('SYMBOLS', msg)
+
+    def symbols_raw(self, msg):
+        """Check if the message is spam or not, and return the score and
+        the string of unparsed, raw symbols returned by the server.
+        This is different from symbols(), which attempts to parse the
+        result."""
+        return self.perform('SYMBOLS', msg, raw_symbols=True)
 
     def report(self, msg):
         """Check if message is spam or not, and return score plus report"""
@@ -327,3 +342,9 @@ class SpamC(object):
     def revoke(self, msg):
         """Tell spamd message is not spam"""
         return self.tell(msg, 'revoke')
+
+
+if __name__ == '__main__':
+    import sys
+    #print(SpamC(host='localhost', port=783, ssl=True).symbols(open(sys.argv[1])))
+    print(SpamC(host='localhost', port=1344, ssl=False).symbols(open(sys.argv[1])))
